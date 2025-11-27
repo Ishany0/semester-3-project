@@ -10,6 +10,7 @@ import tensorflow as tf
 from keras.applications import ResNet50
 from tensorflow.keras.applications.resnet import preprocess_input
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from keras.callbacks import ReduceLROnPlateau
 import kagglehub
 import numpy as np
 import pandas as pd
@@ -33,52 +34,66 @@ train_dir=os.path.join(path,'chest_xray','train')   #Points to the train folder 
 val_dir=os.path.join(path,'chest_xray','val')
 test_dir=os.path.join(path,'chest_xray','test')
 
+
+'''
 train_datagen=ImageDataGenerator(
     rotation_range=10,
     width_shift_range=0.1,
     height_shift_range=0.1,
-    zoom_range=0.1,
+    zoom_range=0.15,
     horizontal_flip=True,
     fill_mode='nearest',
-    preprocessing_function=preprocess_input
+    preprocessing_function=preprocess_input,
+    validation_split=0.2
 )
 val_datagen=ImageDataGenerator(
-    preprocessing_function=preprocess_input
+    preprocessing_function=preprocess_input,
+    validation_split=0.2
 )
 '''
 train_dataset=tf.keras.utils.image_dataset_from_directory(train_dir,
-                                                          image_size=(160,160),
-                                                          batch_size=32
+                                                          validation_split=0.2,
+                                                          subset='training',
+                                                          image_size=(224,224),
+                                                          batch_size=32,
+                                                          seed=123
                                                           )
 
-val_dataset = tf.keras.utils.image_dataset_from_directory(test_dir,
-                                            
-                                                          image_size=(160,160),
-                                                          batch_size=32)
+val_dataset = tf.keras.utils.image_dataset_from_directory(train_dir,
+                                                          validation_split=0.2,
+                                                          subset='validation',
+                                                          image_size=(224,224),
+                                                          batch_size=32,
+                                                          seed=123)
+test_dataset=tf.keras.utils.image_dataset_from_directory(test_dir,
+                                                            image_size=(224,224),
+                                                            batch_size=32)
 '''
 train_dataset = train_datagen.flow_from_directory(
     train_dir,
-    target_size=(160,160),
+    subset='training',
+    target_size=(224,224),
     batch_size=32,
     class_mode='binary'
 )
 
 val_dataset = val_datagen.flow_from_directory(
-    test_dir,
-    target_size=(160,160),
+    train_dir,
+    subset='validation',
+    target_size=(224,224),
     batch_size=32,
     class_mode='binary',
     shuffle=False
 )
 
 test_dataset = val_datagen.flow_from_directory(
-    val_dir,
-    target_size=(160,160),
+    test_dir,
+    target_size=(224,224),
     batch_size=32,
     class_mode='binary',
     shuffle=False
 )
-
+'''
 #using 160x160 instead of 256x256 and batch size=32 to reduce computational cost (and enhance speed), you lose very little accuracy for medical tasks since textures dominate, not object detail.
 
 
@@ -87,7 +102,7 @@ test_dataset = val_datagen.flow_from_directory(
 base_model=tf.keras.applications.ResNet50(
     include_top=False,
     weights='imagenet',
-    input_shape=(160,160, 3),
+    input_shape=(224,224, 3),
     pooling='avg',
     name='ResNet50'
 )
@@ -121,7 +136,7 @@ data_augmentation = tf.keras.Sequential([
 
 
 
-'''
+
 AUTOTUNE=tf.data.AUTOTUNE
 
 #add performance improvement
@@ -138,18 +153,18 @@ val_dataset=val_dataset.cache().prefetch(buffer_size=AUTOTUNE)
 test_dataset=test_dataset.cache().prefetch(buffer_size=AUTOTUNE)
 #cache() keeps data in memory after loaded off disk
 #Otherwise, drop .cache() and keep only .prefetch() to avoid memory overflow.
-'''
+
 
 
 model = tf.keras.models.Sequential([      #
     base_model,
-    tf.keras.layers.Dense(units=256,activation='relu'),
+    tf.keras.layers.Dense(units=256,activation='relu',kernel_regularizer=tf.keras.regularizers.l2(0.001)),  #L2 regularization on dense layers   for better accuracy and specificity
     tf.keras.layers.Dropout(0.3), #to avoid overfitting
-    tf.keras.layers.Dense(units=128,activation='relu'),
+    tf.keras.layers.Dense(units=128,activation='relu',kernel_regularizer=tf.keras.regularizers.l2(0.001)),
     tf.keras.layers.Dropout(0.3),
-    tf.keras.layers.Dense(units=64,activation='relu'),
+    tf.keras.layers.Dense(units=64,activation='relu',kernel_regularizer=tf.keras.regularizers.l2(0.001)),
     tf.keras.layers.Dropout(0.3),  
-    tf.keras.layers.Dense(units=2,activation='softmax') 
+    tf.keras.layers.Dense(units=2,activation='softmax',kernel_regularizer=tf.keras.regularizers.l2(0.001)) 
 ])
 #softmax for multi-class classification
 #flatten layer is inappropriate for resnet-level data,results in 196,608 input neurons per sample — extremely inefficient and meaningless for raw images.
@@ -164,19 +179,31 @@ model.add(tf.keras.layers.Dense(units=2,activation='softmax'))
 
 '''
 
+
+#scheduler for learning rate decay
+lr_scheduler=ReduceLROnPlateau(
+    monitor='val_loss',
+    factor=0.3,
+    patience=3,
+    min_lr=1e-7,
+    verbose=1
+)
+
+
+
 #fine-tuning, avoids massive gradient computation.
 base_model.trainable = False
-model.compile(optimizer=tf.keras.optimizers.Adam(1e-5), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-model.fit(train_dataset,shuffle=True,verbose=1, validation_data=val_dataset, epochs=2)
+model.compile(optimizer=tf.keras.optimizers.Adam(1e-4), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.fit(train_dataset,shuffle=True,verbose=1, validation_data=val_dataset, epochs=10, callbacks=[lr_scheduler])
 
 
 
 base_model.trainable = True
-for layer in base_model.layers[:-20]:
+for layer in base_model.layers[:-30]:
     layer.trainable = False
 
-model.compile(optimizer=tf.keras.optimizers.Adam(1e-4), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-model.fit(train_dataset, validation_data=val_dataset, epochs=2)
+model.compile(optimizer=tf.keras.optimizers.Adam(1e-5), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.fit(train_dataset, validation_data=val_dataset, epochs=4,shuffle=True,verbose=1)
 
 
 
@@ -185,14 +212,15 @@ model.fit(train_dataset, validation_data=val_dataset, epochs=2)
 loss,accuracy = model.evaluate(val_dataset)
 print("ACCURACY:",accuracy)
 print("LOSS:",loss)
-'''
-test_dataset.reset() #Important: reset the generator before predicting, to start from the beginning
-val_dataset.reset()
-predicted_results=model.predict(test_dataset)
+
+ #Important: reset the generator before predicting, to start from the beginning
+batch_size=32
+
+y_true=np.concatenate([y for x, y in test_dataset]) 
+test_dataset_for_pred=test_dataset.unbatch().batch(batch_size)  #reset pointer
+predicted_results=model.predict(test_dataset_for_pred)
+
 y_prob=predicted_results[:,1 ] #probability of class 1 
-test_dataset.reset()       #reset again for safety( correct label extraction)
-val_dataset.reset()
-y_true=np.concatenate([y for x, y in test_dataset], axis=0) 
 predicted_results=np.argmax(predicted_results,axis=1)# #Converts softmax output (2 probabilities) to predicted class index (0 or 1).
 print("Predicted results:",predicted_results)
 print("classification report:\n", classification_report(y_true,y_pred=predicted_results,target_names=['NORMAL','PNEUMONIA']))
@@ -216,29 +244,28 @@ plt.ylabel('True Positive Rate')
 plt.title('ROC Curve - ResNet50 CT Scan Classification')
 plt.grid(True)
 plt.show(block=True)
-'''
+plt.hist(y_prob, bins=30)
+plt.title("y_prob distribution")
+plt.show()
 
+
+'''
 test_dataset.reset()
 predicted_results = model.predict(test_dataset)
-y_prob = predicted_results[:, 1]
-predicted_labels = np.argmax(predicted_results, axis=1)
+y_prob = predicted_results.ravel()
+predicted_labels=(y_prob>0.6).astype(int)  #Applying a threshold of 0.6 for classification
 y_true = test_dataset.classes
 print("Classification Report:\n")
 print(classification_report(y_true, predicted_labels, target_names=['NORMAL','PNEUMONIA']))
 cm = confusion_matrix(y_true, predicted_labels)
 TN, FP, FN, TP = cm.ravel()
-
 sensitivity = TP / (TP + FN)
 specificity = TN / (TN + FP)
-
+print("\nConfusion Matrix:\n",cm)
 print("Sensitivity:", sensitivity)
-print("Specificity:", specificity)
-
-# AUC
+print("Specificity:", specificity)   #Specificity depends on how strictly you classify negatives.
 auc_score = roc_auc_score(y_true, y_prob)
 print("AUC:", auc_score)
-
-# ROC Curve
 fpr, tpr, thresholds = roc_curve(y_true, y_prob)
 plt.figure(figsize=(7,6))
 plt.plot(fpr, tpr, lw=2, label=f'ROC curve (AUC = {auc_score:.2f})')
@@ -248,5 +275,10 @@ plt.title('ROC Curve - CT Scan Classification')
 plt.grid(True)
 plt.legend()
 plt.show()
+
+'''
+
+
+
 
 
