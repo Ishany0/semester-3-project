@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 from tensorflow import keras
 from IPython.display import Image,display
 import matplotlib as mpl
+from PIL import Image as PILImage
 
 
 path = kagglehub.dataset_download("unclesamulus/blood-cells-image-dataset")
@@ -44,6 +45,7 @@ val_dataset = tf.keras.utils.image_dataset_from_directory(dataset_dir,
                                                           label_mode='int',
                                                           seed=123)
 test_dataset=tf.keras.utils.image_dataset_from_directory(dataset_dir,
+                                                               
                                                             shuffle=False,
                                                             image_size=(224,224),
                                                             batch_size=32)
@@ -95,7 +97,7 @@ lr_scheduler=ReduceLROnPlateau(
 
 base_model.trainable = False
 model.compile(optimizer=tf.keras.optimizers.Adam(1e-4), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-model.fit(train_dataset,shuffle=True,verbose=1, validation_data=val_dataset, epochs=2, callbacks=[lr_scheduler])
+model.fit(train_dataset,shuffle=True,verbose=1, validation_data=val_dataset, epochs=0, callbacks=[lr_scheduler])
 
 
 
@@ -104,7 +106,7 @@ for layer in base_model.layers[:-30]:
     layer.trainable = False
 
 model.compile(optimizer=tf.keras.optimizers.Adam(1e-5), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-history=model.fit(train_dataset, validation_data=val_dataset, epochs=1,shuffle=True,verbose=1)
+history=model.fit(train_dataset, validation_data=val_dataset, epochs=0,shuffle=True,verbose=1)
 
 
 
@@ -124,20 +126,19 @@ predicted_results=np.argmax(predicted_results,axis=1)
 
 print("Predicted results:",predicted_results)
 print("classification report:\n", classification_report(y_true,y_pred=predicted_results,target_names=class_names))
-cm=confusion_matrix(y_true,y_pred=predicted_results)  
-auc_score=roc_auc_score(y_true,y_prob)  
-print('AUC SCORE:',auc_score) 
 
 
-y_true_oh = label_binarize(y_true, classes= list(range(numclasses)))
-fpr={}
-tpr={}
-roc_auc={}
+y_true_oh = label_binarize(y_true, classes=list(range(numclasses)))
+
+fpr = {}
+tpr = {}
+roc_auc = {}
+
 plt.figure(figsize=(10, 8))
-for i in range(numclasses):
-    fpr[i],tpr[i],_=roc_curve(y_true_oh[:,i],predicted_results[:,i])
-    roc_auc[i]=auc(fpr[i],tpr[i])
-    plt.plot(fpr[i],tpr[i],label=f"{class_names[i]}(AUC={roc_auc[i]:.2f})")
+for i in range(numclasses):  
+    fpr[i], tpr[i], _ = roc_curve(y_true_oh[:, i], y_prob[:, i])
+    roc_auc[i] = auc(fpr[i], tpr[i])
+    plt.plot(fpr[i], tpr[i], label=f"{class_names[i]} (AUC={roc_auc[i]:.2f})")
 
 plt.plot([0, 1], [0, 1], 'k--')
 plt.xlabel('False Positive Rate')
@@ -145,8 +146,7 @@ plt.ylabel('True Positive Rate')
 plt.title('ROC Curve')
 plt.legend()
 plt.grid()
-plt.show() 
-
+plt.show()
 
 #configurable parameters
 model_builder=keras.applications.resnet.ResNet50
@@ -155,11 +155,11 @@ preprocess_input=keras.applications.resnet.preprocess_input
 decode_predictions=keras.applications.resnet.decode_predictions
 
 
-last_conv_layer_name="conv5_block3_out  "
+last_conv_layer_name = "conv5_block3_out"
 
 img_path=keras.utils.get_file( "bloodcell_sample.jpg", "https://storage.googleapis.com/kagglesdsdata/datasets/2277635/3865189/bloodcells_dataset/erythroblast/ERB_115039.jpg?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=gcp-kaggle-com%40kaggle-161607.iam.gserviceaccount.com%2F20251129%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20251129T043614Z&X-Goog-Expires=259200&X-Goog-SignedHeaders=host&X-Goog-Signature=47a0fd89c9ec782cf144504bc0c44d698ff195c9b2b81852c287d053ffb4ec7f9738e21f5865a093f0f71d4d908d0fe4ff797dedc16ca04b6f312680cf8c52d04025640c78fc0946e127f48b1c92864766ecf98b9d5ab4260d76fd611c8021e88abee83d08fdbc9b3f0871de31dd194a33fe1e4d386798bb18bc29f503d43a4f38f2e6f63ff017f2da6d36df5a6dcadd7211cee6857c4e3c261cf8a9f08bb68f17228cd938e280140f8eafcc9b558483c744972583ef641225727736af3555f78517a6b7b3ebb0856a23d4c110c361bbca7e88dc43ba9b470fe12904b4dbe33671452a3e559ff9217b1c371127e99cbb8ad370b014f3a41e2509c564a1aab3d1")
 display(Image(img_path))
-image = Image.open(img_path)
+image = PILImage.open(img_path)
 img = image.resize((224, 224))   #preprocessing the image
 img_array = tf.keras.preprocessing.image.img_to_array(img)
 img_array = tf.expand_dims(img_array, 0)
@@ -168,7 +168,6 @@ class_labels = ['Basophil', 'Eosinophil', 'Erythroblast', 'IG', 'lymphocyte', 'M
 score = tf.nn.softmax(predictions[0])
 print(f"{class_labels[tf.argmax(score)]}")
 plt.figure(figsize=(5,5))
-plt.imshow(img.astype("uint8"))
 plt.title(f"Predicted: {class_labels[tf.argmax(score)]} with {100 * tf.reduce_max(score):.2f} percent confidence")
 plt.axis("off")
 plt.show()
@@ -212,13 +211,15 @@ def save_and_display_gradcam(img_path,heatmap,cam_path="cam.jpg",alpha=0.4):
 
 #test-drive it
 img_array=preprocess_input(get_img_array(img_path,size=img_size))
-model=model_builder(weights='imagenet')
-model.layers[-1].activation=None
-preds=model.predict(img_array)
+imagenet_model=model_builder(weights='imagenet',include_top=True)
+imagenet_model.layers[-1].activation=None
+preds=imagenet_model.predict(img_array)
 print('Predicted:',decode_predictions(preds,top=1)[0])
-heatmap=make_gradcam_heatmap(img_array,model,last_conv_layer_name)
+heatmap=make_gradcam_heatmap(img_array,imagenet_model,last_conv_layer_name)
 plt.matshow(heatmap)
 plt.title("Grad-CAM Heatmap")
 plt.show()
 save_and_display_gradcam(img_path,heatmap, cam_path="gradcam_overlay.jpg")
+
+
 
