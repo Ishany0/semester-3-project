@@ -209,13 +209,14 @@ model.fit(train_dataset, validation_data=val_dataset, epochs=1,shuffle=True,verb
 
 #DIRECTORY ITERATOR EXHAUSTION: once you interate over it, the pointer moves forward and hence next time it iterates over an empty iterator
 
-
+print("Evaluating on validation dataset:")
 loss,accuracy = model.evaluate(val_dataset)
 print("ACCURACY:",accuracy)
 print("LOSS:",loss)
 
  #Important: reset the generator before predicting, to start from the beginning
 batch_size=32
+#Threshold tuning only makes sense for binary classification
 
 y_true=np.concatenate([y for x, y in test_dataset]) 
 test_dataset_for_pred=test_dataset.unbatch().batch(batch_size)  #reset pointer
@@ -239,6 +240,8 @@ predicted_results = (y_prob >= best_t).astype(int)
 print("Predicted results:",predicted_results)
 print("classification report:\n", classification_report(y_true,y_pred=predicted_results,target_names=['NORMAL','PNEUMONIA']))
 cm=confusion_matrix(y_true,y_pred=predicted_results)
+accuracy=(cm[0,0]+cm[1,1])/np.sum(cm)
+print("Overall Accuracy:",accuracy)
 TN,FP,FN,TP=cm.ravel()
 sensitivity=TP/(TP+FN)
 specificity=TN/(TN+FP)
