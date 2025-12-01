@@ -97,7 +97,7 @@ lr_scheduler=ReduceLROnPlateau(
 
 base_model.trainable = False
 model.compile(optimizer=tf.keras.optimizers.Adam(1e-4), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-model.fit(train_dataset,shuffle=True,verbose=1, validation_data=val_dataset, epochs=0, callbacks=[lr_scheduler])
+model.fit(train_dataset,shuffle=True,verbose=1, validation_data=val_dataset, epochs=10, callbacks=[lr_scheduler])
 
 
 
@@ -106,7 +106,7 @@ for layer in base_model.layers[:-30]:
     layer.trainable = False
 
 model.compile(optimizer=tf.keras.optimizers.Adam(1e-5), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-history=model.fit(train_dataset, validation_data=val_dataset, epochs=0,shuffle=True,verbose=1)
+history=model.fit(train_dataset, validation_data=val_dataset, epochs=5,shuffle=True,verbose=1)
 
 
 
@@ -220,6 +220,11 @@ plt.matshow(heatmap)
 plt.title("Grad-CAM Heatmap")
 plt.show()
 save_and_display_gradcam(img_path,heatmap, cam_path="gradcam_overlay.jpg")
+
+
+
+
+
 
 
 
