@@ -27,9 +27,9 @@ path =r"H:\COVID-19 Dataset"
 print("Path to dataset files:", path)
 
 train_dir1=os.path.join(path,"CT") 
-#train_dir2=os.path.join(path,"X-Ray")
+#train_dir1=os.path.join(path,"X-Ray")
 test_dir1=os.path.join(path,"TEST-CT")
-#test_dir2=os.path.join(path,"TEST-X-Ray")
+#test_dir1=os.path.join(path,"TEST-X-Ray")
 
 
 train_dataset=tf.keras.utils.image_dataset_from_directory(train_dir1,
@@ -98,7 +98,7 @@ lr_scheduler=ReduceLROnPlateau(
 
 base_model.trainable = False
 model.compile(optimizer=tf.keras.optimizers.Adam(1e-4), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-model.fit(train_dataset,shuffle=True,verbose=1, validation_data=val_dataset, epochs=1, callbacks=[lr_scheduler])
+model.fit(train_dataset,shuffle=True,verbose=1, validation_data=val_dataset, epochs=10, callbacks=[lr_scheduler])
 
 
 
@@ -107,7 +107,7 @@ for layer in base_model.layers[:-30]:
     layer.trainable = False
 
 model.compile(optimizer=tf.keras.optimizers.Adam(1e-5), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-model.fit(train_dataset, validation_data=val_dataset, epochs=1,shuffle=True,verbose=1)
+model.fit(train_dataset, validation_data=val_dataset, epochs=5,shuffle=True,verbose=1)
 
 
 
@@ -141,6 +141,7 @@ cm=confusion_matrix(y_true,y_pred=predicted_results)
 TN,FP,FN,TP=cm.ravel()
 sensitivity=TP/(TP+FN)
 specificity=TN/(TN+FP)
+print(confusion_matrix(y_true,y_pred=predicted_results))
 
 print("Sensitivity(Recall for COVID-19):",sensitivity) 
 print("Specificity (Recall for Normal):",specificity)   
@@ -219,5 +220,6 @@ plt.matshow(heatmap)
 plt.title("Grad-CAM Heatmap")
 plt.show()
 save_and_display_gradcam(img_path,heatmap, cam_path="gradcam_overlay.jpg")
+
 
 
