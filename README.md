@@ -227,7 +227,7 @@ These challenges should be addressed before real-world clinical deployment.
 
 **Ishanya Sharma**
 
-B.E. Computer Engineering
+B.E. AIML
 
 ## Disclaimer
 
